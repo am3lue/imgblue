@@ -6,3 +6,7 @@ export const site = {
   repo: "https://github.com/am3lue/imgblue",
   defaultBaseUrl: "https://imgblue.vercel.app",
 };
+
+const configuredBaseUrl = process.env.NEXT_PUBLIC_BASE_URL?.trim();
+
+export const siteUrl = (configuredBaseUrl || site.defaultBaseUrl).replace(/\/+$/, "");

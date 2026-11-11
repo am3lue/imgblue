@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { JsonLd } from "@/components/json-ld";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { ShareActions } from "@/components/share-actions";
 import { imageLinks } from "@/lib/api";
 import { formatBytes, formatDate } from "@/lib/format";
 import { cleanImageId, getImageMeta, incrementViews } from "@/lib/images";
+import { imageJsonLd } from "@/lib/seo";
+import { siteUrl } from "@/lib/site";
 import { baseUrl } from "@/lib/url";
 
 export const dynamic = "force-dynamic";
@@ -26,17 +29,21 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: "Image not found", robots: { index: false, follow: false } };
   }
 
-  const base = await baseUrl();
-  const direct = `${base}/api/i/${image.id}`;
+  const direct = `${siteUrl}/api/i/${image.id}`;
+  const shareUrl = `${siteUrl}/i/${image.id}`;
   const name = displayName(image.original_name, image.id);
-  const description = `Shared with imgblue · ${image.width}×${image.height} · ${formatBytes(image.size_bytes)}`;
+  const description = `${name} · ${image.width}×${image.height} · ${formatBytes(image.size_bytes)} — view and download this image on imgblue.`;
 
   return {
     title: name,
     description,
+    alternates: { canonical: shareUrl },
     openGraph: {
       title: name,
       description,
+      url: shareUrl,
+      siteName: "imgblue",
+      locale: "en_US",
       type: "website",
       images: [{ url: direct, width: image.width, height: image.height, alt: name }],
     },
@@ -45,6 +52,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title: name,
       description,
       images: [direct],
+    },
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+      },
     },
   };
 }
@@ -73,6 +89,9 @@ export default async function ImagePage({ params }: PageProps) {
 
   return (
     <>
+      <JsonLd
+        data={imageJsonLd(image, `${siteUrl}/i/${image.id}`, `${siteUrl}/api/i/${image.id}`)}
+      />
       <SiteHeader />
 
       <main className="mx-auto max-w-6xl px-5 py-8 sm:py-12">
@@ -91,9 +110,12 @@ export default async function ImagePage({ params }: PageProps) {
             <div className="checker flex min-h-[260px] items-center justify-center overflow-hidden rounded-[1.35rem]">
               <img
                 src={links.direct_url}
-                alt={name}
+                alt={`${name} — ${image.width} by ${image.height} image hosted on imgblue`}
                 width={image.width}
                 height={image.height}
+                loading="eager"
+                decoding="async"
+                fetchPriority="high"
                 className="max-h-[72vh] w-full object-contain"
               />
             </div>

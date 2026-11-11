@@ -22,6 +22,9 @@ export function SiteFooter() {
           <Link href="/#api" className="transition-colors hover:text-white">
             API
           </Link>
+          <Link href="/#use-cases" className="transition-colors hover:text-white">
+            Use cases
+          </Link>
           <Link href="/#recent" className="transition-colors hover:text-white">
             Recent
           </Link>

@@ -69,6 +69,24 @@ export async function getImageWithData(id: string): Promise<ImageWithData | null
   return { ...toMeta(row), base64: String(row.base64 ?? "") };
 }
 
+export type SitemapImage = {
+  id: string;
+  created_at: string;
+};
+
+export async function listImagesForSitemap(limit = 500): Promise<SitemapImage[]> {
+  await ensureSchema();
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 5000);
+  const result = await getDb().execute({
+    sql: "SELECT id, created_at FROM images ORDER BY created_at DESC LIMIT ?",
+    args: [safeLimit],
+  });
+  return result.rows.map((row) => ({
+    id: String(row.id),
+    created_at: String(row.created_at ?? ""),
+  }));
+}
+
 export async function listRecentImages(limit = 12): Promise<ImageMeta[]> {
   await ensureSchema();
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 48);

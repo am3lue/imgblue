@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { CodeTabs } from "@/components/code-tabs";
 import { CopyButton } from "@/components/copy-button";
@@ -24,6 +25,40 @@ import { site } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
+const HOME_TITLE = "imgblue — free image hosting with permanent links";
+const HOME_DESCRIPTION =
+  "Upload an image and get a permanent link. Free image hosting for screenshots, docs, and side projects — JPEG-optimized, API-ready, and served from Vercel.";
+
+export const metadata: Metadata = {
+  title: { absolute: HOME_TITLE },
+  description: HOME_DESCRIPTION,
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "imgblue",
+    locale: "en_US",
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    url: "/",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+};
+
 const RESPONSE_SAMPLE = `{
   "id": "9fK2mQ7pLx",
   "url": "${site.defaultBaseUrl}/i/9fK2mQ7pLx",
@@ -35,6 +70,29 @@ const RESPONSE_SAMPLE = `{
   "size_bytes": 184320,
   "created_at": "2026-11-11T18:00:00.000Z"
 }`;
+
+const USE_CASES = [
+  {
+    icon: LinkIcon,
+    title: "Screenshots & bug reports",
+    body: "Paste a screenshot, then drop the direct link into GitHub issues, Linear, Slack, or a support thread. The image stays at the same URL.",
+  },
+  {
+    icon: CodeIcon,
+    title: "READMEs & documentation",
+    body: "Use the Markdown or HTML embed in a README, docs site, Notion page, or changelog. Anyone can view the image without an account.",
+  },
+  {
+    icon: ZapIcon,
+    title: "Prototypes & demos",
+    body: "POST to /api/upload from a side project, script, or AI workflow and get a cache-friendly direct URL back in one request.",
+  },
+  {
+    icon: ShieldIcon,
+    title: "Private details stripped",
+    body: "EXIF metadata is removed during re-encoding, so camera details and location data do not travel with the image.",
+  },
+];
 
 const FEATURES = [
   {
@@ -159,6 +217,46 @@ export default async function HomePage() {
                 <p className="mt-1.5 text-xs leading-relaxed text-ice-400">{feature.body}</p>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section
+          id="use-cases"
+          aria-labelledby="use-cases-heading"
+          className="mx-auto max-w-6xl scroll-mt-24 px-5 py-10"
+        >
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
+            <div>
+              <span className="chip">
+                <LinkIcon className="size-3.5" />
+                Use cases
+              </span>
+              <h2
+                id="use-cases-heading"
+                className="mt-4 font-display text-3xl font-semibold tracking-tight text-white sm:text-4xl"
+              >
+                Free image hosting for the work you share
+              </h2>
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-ice-400">
+                imgblue is built for the images that end up in a ticket, a README, a prototype, or a
+                chat thread. Upload a screenshot or photo, get a permanent link, and reuse it
+                anywhere — no dashboards to dig through and no expiring URLs. Every upload is
+                re-encoded to JPEG with EXIF removed, so pages stay light and private details stay
+                out of the file.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {USE_CASES.map((useCase) => (
+                <div key={useCase.title} className="glass rounded-2xl p-4">
+                  <div className="grid size-9 place-items-center rounded-xl border border-sky-300/15 bg-gradient-to-br from-sky-500/15 to-blue-700/5 text-sky-300">
+                    <useCase.icon className="size-4" />
+                  </div>
+                  <h3 className="mt-3.5 text-sm font-semibold text-white">{useCase.title}</h3>
+                  <p className="mt-1.5 text-xs leading-relaxed text-ice-400">{useCase.body}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
