@@ -1,0 +1,199 @@
+# imgblue
+
+Minimal, fast image hosting with real accounts, API keys, and permanent links.
+
+Upload a PNG, WebP, GIF, or JPEG and get back a shareable page, a direct image URL, a download link, Markdown, and HTML embeds. Images are auto-rotated, stripped of EXIF, re-encoded to JPEG, and stored as base64 rows in Turso. The app runs on Vercel.
+
+```
+POST /api/upload  →  { "url": "https://your-domain/i/abc123", ... }
+```
+
+## Features
+
+- Drag-and-drop, file picker, clipboard paste, and API uploads
+- Accounts with email + password (scrypt), 30-day httpOnly sessions
+- API keys shown once, SHA-256 hashed at rest, revocable
+- Per-account image library with views, storage, and delete
+- Open Graph previews on shared image pages
+- Direct image endpoint with caching, ETag, and `?download=1`
+- Optional public/anonymous uploads via `ALLOW_PUBLIC_UPLOADS`
+- No UI framework beyond Tailwind, no external auth or storage service
+
+## Stack
+
+| Piece     | Choice                              |
+| --------- | ----------------------------------- |
+| Framework | Next.js 16 (App Router, Node runtime) |
+| UI        | React 19 + Tailwind CSS 4           |
+| Database  | Turso / libSQL                      |
+| Images    | sharp (JPEG, EXIF strip, auto-rotate) |
+| Hosting   | Vercel                              |
+
+## Quick start
+
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+Open <http://localhost:3000>, create an account, then upload.
+
+By default local development uses a SQLite file at `file:local.db`, so no Turso account is needed to try it. The schema is created automatically on first use (`ensureSchema`). You can also run it explicitly:
+
+```bash
+npm run db:init
+```
+
+## Turso setup
+
+1. Create a database (CLI or the Turso dashboard):
+
+   ```bash
+   turso db create imgblue
+   turso db show imgblue --url
+   turso db tokens create imgblue
+   ```
+
+2. Put the URL and token in `.env.local` / Vercel:
+
+   ```env
+   TURSO_DATABASE_URL=libsql://imgblue-<org>.turso.io
+   TURSO_AUTH_TOKEN=...
+   ```
+
+3. Optional: create the schema ahead of time.
+
+   ```bash
+   TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... npm run db:init
+   ```
+
+   The app also creates it lazily on the first request, so this is not required.
+
+## Environment variables
+
+| Variable                | Required | Default               | Purpose                                             |
+| ----------------------- | -------- | --------------------- | --------------------------------------------------- |
+| `TURSO_DATABASE_URL`    | Prod     | `file:local.db`       | libSQL/Turso URL                                    |
+| `TURSO_AUTH_TOKEN`      | Prod     | —                     | Turso token (omit for local files)                  |
+| `NEXT_PUBLIC_BASE_URL`  | No       | request origin        | Absolute URL for OG metadata and docs               |
+| `ALLOW_PUBLIC_UPLOADS`  | No       | `false`               | Allow uploads without an account (`true` to enable) |
+
+## Deploy to Vercel
+
+1. Push this repo to GitHub.
+2. Import it in Vercel (framework is auto-detected).
+3. Add `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, and `NEXT_PUBLIC_BASE_URL` in Project → Settings → Environment Variables.
+4. Deploy.
+
+Notes:
+
+- Vercel caps request bodies at **4.5 MB**; imgblue rejects files over **4 MB** for this reason.
+- `NEXT_PUBLIC_BASE_URL` should be the final domain (custom domain if you have one) so social previews resolve absolutely. Upload responses use the request origin, so links still work without it.
+- Serverless instances are ephemeral. Rate limits are in-memory per instance and are best-effort; see below for a distributed option.
+
+## Accounts and auth
+
+- Passwords are hashed with **scrypt** (random 16-byte salt, 64-byte key).
+- Sessions are random 32-byte tokens; only their SHA-256 hash is stored. The cookie (`imgblue_session`) is `httpOnly`, `SameSite=Lax`, `Secure` in production, and expires after 30 days.
+- API keys look like `ib_live_<random>`; only a SHA-256 hash plus a last-4 hint is stored. The full key is shown once at creation. Each account may hold up to **10** active keys, and keys can be revoked without affecting the others.
+- Session-authenticated mutations check the request origin; API-key requests are exempt from the CSRF check.
+- API keys accept `Authorization: Bearer ib_live_...` or `X-API-Key: ib_live_...`.
+
+There is intentionally **no email verification or password reset** yet — both require a transactional email provider. See [Costs](#costs).
+
+## API
+
+Base URL: `https://your-domain`. All endpoints return JSON unless noted, and public endpoints send permissive CORS headers.
+
+### `POST /api/upload`
+
+Requires an API key or a signed-in session (unless `ALLOW_PUBLIC_UPLOADS=true`). Send one of:
+
+- `multipart/form-data` with a `file` field
+- `application/json` with `{ "image": "data:image/png;base64,..." }` or raw base64 in `image`
+- `image/*` raw body
+
+```bash
+curl -X POST https://your-domain/api/upload \
+  -H "Authorization: Bearer ib_live_..." \
+  -F "file=@photo.png"
+```
+
+```json
+{
+  "id": "k3Jd9xQ2",
+  "url": "https://your-domain/i/k3Jd9xQ2",
+  "direct_url": "https://your-domain/api/i/k3Jd9xQ2",
+  "download_url": "https://your-domain/api/i/k3Jd9xQ2?download=1",
+  "markdown": "![photo](https://your-domain/api/i/k3Jd9xQ2)",
+  "html": "<img src=\"https://your-domain/api/i/k3Jd9xQ2\" alt=\"photo\" />",
+  "width": 1600,
+  "height": 900,
+  "size_bytes": 184320,
+  "created_at": "2026-01-01T12:00:00.000Z"
+}
+```
+
+Limits: 4 MB upload, JPEG output, longest edge ≤ 2560 px, stored output ≤ ~700 KB. Larger images are progressively downscaled.
+
+### `GET /api/i/:id`
+
+Returns the JPEG bytes. Cached for a year (`immutable`) with an ETag. Add `?download=1` for `Content-Disposition: attachment`.
+
+### `GET /api/meta/:id`
+
+Public metadata: dimensions, size, views, timestamps, and links.
+
+### `DELETE /api/images/:id`
+
+Requires the owner's session or API key. Deletes the row and returns `{ "deleted": true }`.
+
+### `GET /api/recent`
+
+Returns the latest images: `{ "images": [ ...metadata... ] }`. Supports `?limit=1..48`.
+
+## Data model
+
+- `users (id, email, name, password_hash, created_at)`
+- `sessions (id, user_id, expires_at, created_at)`
+- `api_keys (id, user_id, name, hint, key_hash, created_at, last_used_at, revoked_at)`
+- `images (id, user_id, original_name, mime_type, width, height, size_bytes, base64, created_at, views)`
+
+Old rows without `user_id` still serve and appear in Recent; they simply have no owner.
+
+## Costs
+
+**Required: none.** Everything runs on free tiers.
+
+| Service                | Cost                          | Notes                                                        |
+| ---------------------- | ----------------------------- | ------------------------------------------------------------ |
+| Vercel                 | Free (Hobby)                  | Hobby is for personal/non-commercial use; commercial may need Pro |
+| Turso                  | Free tier                     | Plenty for a small instance; check current storage/row limits |
+| GitHub                 | Free                          | Source hosting                                               |
+| Custom domain          | ~$10–15 / year (optional)     | The only likely paid item                                    |
+| Transactional email    | Free tier (optional)          | Needed only for verification / password reset (e.g. Resend) |
+| Upstash Redis          | Free tier (optional)          | Needed only for global, cross-instance rate limits           |
+
+Storage math: images are capped at ~700 KB of JPEG, which becomes ~933 KB of base64 per row. That keeps rows comfortably readable and predictable on free storage.
+
+## Security notes and limits
+
+- Rate limits are in-memory (per serverless instance) and reset on deploy. For consistent global limits, add Upstash Redis and replace `lib/rate-limit.ts`.
+- Base64-in-row storage is simple and portable but is not a CDN. For heavy traffic, offload bytes to object storage and keep metadata in Turso.
+- No email verification, password reset, or OAuth yet. Add an email provider and a reset-token table before opening signups widely.
+- Deleting an account is not implemented; deleting images and revoking keys is.
+- Secrets belong in environment variables only. `.env.local`, `local.db`, and build output are gitignored.
+
+## Project layout
+
+```
+app/
+  api/            upload, image, meta, recent, delete, auth, account keys
+  i/[id]/         public share page
+  account/        dashboard (keys, library)
+  sign-in|up/     auth pages
+components/       UI (uploader, auth, managers, share actions)
+lib/              db, auth, api keys, images, rate limit, formatting
+scripts/          init-db.mjs
+```
